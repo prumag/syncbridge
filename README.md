@@ -11,6 +11,7 @@ A Rails API app that pulls event data (attendees and sessions) from a client's R
 | Job | `app/jobs/full_sync_job.rb` | Runs a sync in the background (Solid Queue) |
 | Sync history | `SyncRun` model, `GET /sync_runs` | One row per sync with status and record counts |
 | Endpoints | `app/controllers/` | `POST /sync_runs`, `GET /sync_runs`, `GET /attendees` |
+| Status page | `app/controllers/status_controller.rb` | `GET /` shows record counts, sync history and "Sync now" buttons |
 | Mock client API | `mock_api/` | Standalone Rack app that imitates the client's system |
 
 ## Setup
