@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Starts the mock client API on http://localhost:4567
+cd "$(dirname "$0")/.." || exit 1
+exec bundle exec puma mock_api/config.ru -p "${PORT:-4567}" -t 4:4
