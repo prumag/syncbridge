@@ -1,5 +1,6 @@
 class SyncRun < ApplicationRecord
-  RESOURCES = %w[attendees sessions].freeze
+  # Speakers come first because sessions link to them.
+  RESOURCES = %w[speakers attendees sessions].freeze
   STATUSES = %w[running succeeded failed].freeze
 
   validates :resource, inclusion: { in: RESOURCES }

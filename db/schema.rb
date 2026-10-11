@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_064951) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_11_103001) do
   create_table "attendees", force: :cascade do |t|
     t.string "external_id", null: false
     t.string "name", null: false
@@ -36,6 +36,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_064951) do
     t.index ["external_updated_at"], name: "index_event_sessions_on_external_updated_at"
   end
 
+  create_table "session_speakers", force: :cascade do |t|
+    t.integer "event_session_id", null: false
+    t.integer "speaker_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["event_session_id", "speaker_id"], name: "index_session_speakers_on_event_session_id_and_speaker_id", unique: true
+    t.index ["event_session_id"], name: "index_session_speakers_on_event_session_id"
+    t.index ["speaker_id"], name: "index_session_speakers_on_speaker_id"
+  end
+
+  create_table "speakers", force: :cascade do |t|
+    t.string "external_id", null: false
+    t.string "name", null: false
+    t.string "company"
+    t.string "job_title"
+    t.datetime "external_updated_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["external_id"], name: "index_speakers_on_external_id", unique: true
+    t.index ["external_updated_at"], name: "index_speakers_on_external_updated_at"
+  end
+
   create_table "sync_runs", force: :cascade do |t|
     t.string "resource", null: false
     t.string "status", default: "running", null: false
@@ -49,4 +71,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_064951) do
     t.datetime "updated_at", null: false
     t.index ["resource", "status"], name: "index_sync_runs_on_resource_and_status"
   end
+
+  add_foreign_key "session_speakers", "event_sessions"
+  add_foreign_key "session_speakers", "speakers"
 end

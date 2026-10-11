@@ -62,6 +62,79 @@ class MockApiAppTest < ActiveSupport::TestCase
     assert_includes statuses, 200
   end
 
+  test "serves speakers and sessions that reference them" do
+    _, speakers = get_json("/api/v1/speakers?per_page=200")
+    _, sessions = get_json("/api/v1/sessions?per_page=200")
+
+    speaker_ids = speakers["data"].map { |s| s["id"] }
+    assert_equal MockApi::SPEAKER_COUNT, speakers["meta"]["total"]
+    assert_equal %w[company id name title updated_at], speakers["data"].first.keys.sort
+
+    sessions["data"].each do |session|
+      assert_operator session["speaker_ids"].size, :>=, 1
+      assert_empty session["speaker_ids"] - speaker_ids
+    end
+  end
+
+  test "mutate can change and create sessions and speakers" do
+    _, counts = post_json("/admin/mutate", resource: "speakers", updates: 2, creates: 3)
+    assert_equal MockApi::SPEAKER_COUNT + 3, counts["speakers"]
+
+    _, counts = post_json("/admin/mutate", resource: "sessions", updates: 2, creates: 1)
+    assert_equal MockApi::SESSION_COUNT + 1, counts["sessions"]
+
+    _, body = get_json("/api/v1/sessions?per_page=200")
+    new_session = body["data"].find { |s| s["id"] == "ses_#{MockApi::SESSION_COUNT + 1}" }
+    assert_operator new_session["speaker_ids"].size, :>=, 1
+  end
+
+  test "mutate rejects an unknown resource" do
+    response, = post_json("/admin/mutate", resource: "invoices", updates: 1)
+    assert_equal 422, response.status
+  end
+
+  test "delete removes records from the API" do
+    response, counts = post_json("/admin/delete", attendees: 5, sessions: 2)
+
+    assert_equal 200, response.status
+    assert_equal MockApi::ATTENDEE_COUNT - 5, counts["attendees"]
+    assert_equal MockApi::SESSION_COUNT - 2, counts["sessions"]
+    assert_equal MockApi::SPEAKER_COUNT, counts["speakers"]
+
+    _, body = get_json("/api/v1/attendees?per_page=1")
+    assert_equal MockApi::ATTENDEE_COUNT - 5, body["meta"]["total"]
+  end
+
+  test "deleting a speaker removes it from sessions and marks those sessions as changed" do
+    _, before = get_json("/api/v1/sessions?per_page=200")
+    post_json("/admin/delete", speakers: MockApi::SPEAKER_COUNT)
+    _, after = get_json("/api/v1/sessions?per_page=200")
+
+    assert_equal 0, get_json("/api/v1/speakers")[1]["meta"]["total"]
+    assert(after["data"].all? { |s| s["speaker_ids"].empty? })
+
+    after_by_id = after["data"].index_by { |s| s["id"] }
+    before["data"].each do |old|
+      assert_operator after_by_id[old["id"]]["updated_at"], :>, old["updated_at"]
+    end
+  end
+
+  test "new records never reuse the id of a deleted record" do
+    post_json("/admin/delete", attendees: 10)
+    post_json("/admin/mutate", creates: 10)
+
+    ids = (1..7).flat_map { |page| get_json("/api/v1/attendees?per_page=200&page=#{page}")[1]["data"].map { |a| a["id"] } }
+
+    assert_equal MockApi::ATTENDEE_COUNT, ids.size
+    assert_equal ids.uniq.size, ids.size
+    assert_includes ids, "att_#{MockApi::ATTENDEE_COUNT + 10}"
+  end
+
+  test "delete rejects unknown keys" do
+    response, = post_json("/admin/delete", invoices: 1)
+    assert_equal 422, response.status
+  end
+
   test "rejects an unknown mode" do
     response, = post_json("/admin/mode", mode: "chaos")
     assert_equal 422, response.status
@@ -69,11 +142,13 @@ class MockApiAppTest < ActiveSupport::TestCase
 
   test "reset restores the original data and mode" do
     post_json("/admin/mutate", creates: 5)
+    post_json("/admin/delete", speakers: 3)
     post_json("/admin/mode", mode: "flaky")
 
     _, state = post_json("/admin/reset")
 
     assert_equal "normal", state["mode"]
     assert_equal MockApi::ATTENDEE_COUNT, state["attendees"]
+    assert_equal MockApi::SPEAKER_COUNT, state["speakers"]
   end
 end

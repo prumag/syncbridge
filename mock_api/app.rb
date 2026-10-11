@@ -6,17 +6,24 @@ require "rack"
 #
 #   GET  /api/v1/attendees?page=1&per_page=100[&updated_since=ISO8601]
 #   GET  /api/v1/sessions?page=1&per_page=100[&updated_since=ISO8601]
+#   GET  /api/v1/speakers?page=1&per_page=100[&updated_since=ISO8601]
 #   POST /admin/mode     {"mode": "normal|flaky|rate_limited|slow"}
-#   POST /admin/mutate   {"updates": 10, "creates": 5}
+#   POST /admin/mutate   {"resource": "attendees", "updates": 10, "creates": 5}
+#   POST /admin/delete   {"attendees": 5, "sessions": 2, "speakers": 1}
 #   POST /admin/reset
 #   GET  /admin/state
 #
 # Requests to /api/v1 need the header "Authorization: Bearer test-token".
+#
+# Sessions list the ids of their speakers in "speaker_ids". Deleted records simply
+# stop appearing in the API; the client never reports a deletion in any other way.
 module MockApi
   TOKEN = "test-token".freeze
   BASE_TIME = Time.utc(2026, 9, 1, 8, 0, 0)
   ATTENDEE_COUNT = 1200
   SESSION_COUNT = 60
+  SPEAKER_COUNT = 25
+  RESOURCES = %w[attendees sessions speakers].freeze
   MODES = %w[normal flaky rate_limited slow].freeze
   RATE_LIMIT = 5
   RATE_WINDOW_SECONDS = 10
@@ -27,6 +34,7 @@ module MockApi
   FIRST_NAMES = %w[Asha Ben Carla Dev Elena Farid Grace Hiro Isla Jorge Kavya Liam Maya Noor Omar Priya].freeze
   LAST_NAMES = %w[Anders Brooks Chen Diaz Evans Fox Gupta Haas Ito Jones Khan Lopez Mehta Nair Ortiz Patel].freeze
   ROOMS = [ "Hall A", "Hall B", "Room 101", "Room 102", "Ballroom", "Studio" ].freeze
+  JOB_TITLES = [ "Engineer", "Designer", "Product Manager", "Researcher", "CTO", "Founder", "Analyst" ].freeze
 
   class Store
     attr_reader :mode
@@ -41,9 +49,20 @@ module MockApi
         @rng = Random.new(42)
         @mode = "normal"
         @request_times = []
-        @clock = BASE_TIME + ATTENDEE_COUNT + SESSION_COUNT
-        @attendees = (1..ATTENDEE_COUNT).map { |i| build_attendee(i, BASE_TIME + i) }
-        @sessions = (1..SESSION_COUNT).map { |i| build_session(i, BASE_TIME + ATTENDEE_COUNT + i) }
+        @clock = BASE_TIME + ATTENDEE_COUNT + SESSION_COUNT + SPEAKER_COUNT
+        @next_id = {
+          "attendees" => ATTENDEE_COUNT + 1,
+          "sessions" => SESSION_COUNT + 1,
+          "speakers" => SPEAKER_COUNT + 1
+        }
+        speaker_pool = (1..SPEAKER_COUNT).map { |i| "spk_#{i}" }
+        @records = {
+          "attendees" => (1..ATTENDEE_COUNT).map { |i| build_attendee(i, BASE_TIME + i) },
+          "sessions" => (1..SESSION_COUNT).map do |i|
+            build_session(i, BASE_TIME + ATTENDEE_COUNT + i, pick_speaker_ids(speaker_pool))
+          end,
+          "speakers" => (1..SPEAKER_COUNT).map { |i| build_speaker(i, BASE_TIME + ATTENDEE_COUNT + SESSION_COUNT + i) }
+        }
       end
     end
 
@@ -52,7 +71,7 @@ module MockApi
     end
 
     def collection(resource)
-      @lock.synchronize { resource == "attendees" ? @attendees.dup : @sessions.dup }
+      @lock.synchronize { @records.fetch(resource).map(&:dup) }
     end
 
     # Registers a request for rate limiting. Returns seconds to wait if over the limit, else nil.
@@ -73,29 +92,81 @@ module MockApi
       @lock.synchronize { @rng.rand < FLAKY_FAILURE_RATE }
     end
 
-    def mutate(updates:, creates:)
+    # Changes `updates` random records and adds `creates` new ones, each stamped with a fresh updated_at.
+    def mutate(resource:, updates:, creates:)
       @lock.synchronize do
+        records = @records.fetch(resource)
+
         updates.times do
-          record = @attendees[@rng.rand(@attendees.size)]
-          record["company"] = COMPANIES[@rng.rand(COMPANIES.size)]
+          break if records.empty?
+
+          record = records[@rng.rand(records.size)]
+          case resource
+          when "sessions" then record["room"] = ROOMS[@rng.rand(ROOMS.size)]
+          else record["company"] = COMPANIES[@rng.rand(COMPANIES.size)]
+          end
           record["updated_at"] = tick.iso8601
         end
+
         creates.times do
-          id = @attendees.size + 1
-          @attendees << build_attendee(id, tick)
+          id = @next_id[resource]
+          @next_id[resource] += 1
+          records << build_new(resource, id, tick)
         end
-        { attendees: @attendees.size, sessions: @sessions.size }
+
+        counts
+      end
+    end
+
+    # Removes random records. Removing a speaker also drops it from the sessions that listed it,
+    # which counts as a change to those sessions.
+    def remove(amounts)
+      @lock.synchronize do
+        amounts.each do |resource, amount|
+          records = @records.fetch(resource)
+          amount.clamp(0, records.size).times do
+            removed = records.delete_at(@rng.rand(records.size))
+            detach_speaker(removed["id"]) if resource == "speakers"
+          end
+        end
+
+        counts
       end
     end
 
     def state
-      @lock.synchronize { { mode: @mode, attendees: @attendees.size, sessions: @sessions.size } }
+      @lock.synchronize { { mode: @mode }.merge(counts) }
     end
 
     private
 
+    def counts
+      RESOURCES.to_h { |resource| [ resource.to_sym, @records.fetch(resource).size ] }
+    end
+
     def tick
       @clock += 1
+    end
+
+    def detach_speaker(speaker_id)
+      @records["sessions"].each do |session|
+        next unless session["speaker_ids"].include?(speaker_id)
+
+        session["speaker_ids"] = session["speaker_ids"] - [ speaker_id ]
+        session["updated_at"] = tick.iso8601
+      end
+    end
+
+    def pick_speaker_ids(pool)
+      pool.sample(1 + @rng.rand(2), random: @rng).sort_by { |id| id.delete_prefix("spk_").to_i }
+    end
+
+    def build_new(resource, id, updated_at)
+      case resource
+      when "attendees" then build_attendee(id, updated_at)
+      when "sessions" then build_session(id, updated_at, pick_speaker_ids(@records["speakers"].map { |s| s["id"] }))
+      when "speakers" then build_speaker(id, updated_at)
+      end
     end
 
     def build_attendee(id, updated_at)
@@ -110,7 +181,7 @@ module MockApi
       }
     end
 
-    def build_session(id, updated_at)
+    def build_session(id, updated_at, speaker_ids)
       start = BASE_TIME + (id * 3600)
       {
         "id" => "ses_#{id}",
@@ -118,12 +189,27 @@ module MockApi
         "room" => ROOMS[@rng.rand(ROOMS.size)],
         "starts_at" => start.iso8601,
         "ends_at" => (start + 3000).iso8601,
+        "speaker_ids" => speaker_ids,
+        "updated_at" => updated_at.iso8601
+      }
+    end
+
+    def build_speaker(id, updated_at)
+      first = FIRST_NAMES[@rng.rand(FIRST_NAMES.size)]
+      last = LAST_NAMES[@rng.rand(LAST_NAMES.size)]
+      {
+        "id" => "spk_#{id}",
+        "name" => "#{first} #{last}",
+        "company" => COMPANIES[@rng.rand(COMPANIES.size)],
+        "title" => JOB_TITLES[@rng.rand(JOB_TITLES.size)],
         "updated_at" => updated_at.iso8601
       }
     end
   end
 
   class App
+    COLLECTION_PATH = %r{\A/api/v1/(#{RESOURCES.join('|')})\z}
+
     def initialize(store = Store.new)
       @store = store
     end
@@ -132,12 +218,14 @@ module MockApi
       request = Rack::Request.new(env)
 
       case [ request.request_method, request.path_info ]
-      in [ "GET", %r{\A/api/v1/(attendees|sessions)\z} ]
+      in [ "GET", COLLECTION_PATH ]
         handle_collection(request, Regexp.last_match(1))
       in [ "POST", "/admin/mode" ]
         set_mode(request)
       in [ "POST", "/admin/mutate" ]
         mutate(request)
+      in [ "POST", "/admin/delete" ]
+        remove(request)
       in [ "POST", "/admin/reset" ]
         @store.reset!
         json(200, @store.state)
@@ -190,13 +278,24 @@ module MockApi
 
     def mutate(request)
       body = parse_body(request)
-      counts = @store.mutate(updates: body.fetch("updates", 0).to_i, creates: body.fetch("creates", 0).to_i)
+      resource = body.fetch("resource", "attendees")
+      return json(422, error: "resource must be one of #{RESOURCES.join(', ')}") unless RESOURCES.include?(resource)
+
+      counts = @store.mutate(resource: resource, updates: body.fetch("updates", 0).to_i, creates: body.fetch("creates", 0).to_i)
       json(200, counts)
+    end
+
+    def remove(request)
+      body = parse_body(request)
+      return json(422, error: "keys must be among #{RESOURCES.join(', ')}") unless (body.keys - RESOURCES).empty?
+
+      json(200, @store.remove(body.transform_values(&:to_i)))
     end
 
     def parse_body(request)
       raw = request.body.read.to_s
-      raw.empty? ? {} : JSON.parse(raw)
+      parsed = raw.empty? ? {} : JSON.parse(raw)
+      parsed.is_a?(Hash) ? parsed : {}
     rescue JSON::ParserError
       {}
     end

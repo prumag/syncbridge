@@ -1,155 +1,108 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<% content_for :head do %>
   <meta http-equiv="refresh" content="5">
-  <title>Syncbridge status</title>
-  <style>
-    :root {
-      --bg: #f6f7f9; --card: #fff; --text: #1d2433; --muted: #6b7385; --border: #e3e6ec;
-      --ok: #1a7f4b; --ok-bg: #e4f5ec; --fail: #b3261e; --fail-bg: #fde8e6; --run: #8a5a00; --run-bg: #fff3d6;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    main { max-width: 960px; margin: 0 auto; padding: 32px 20px 56px; }
-    h1 { margin: 0; font-size: 24px; }
-    h2 { margin: 32px 0 12px; font-size: 16px; }
-    .sub { color: var(--muted); margin: 4px 0 0; }
-    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
-    .sync-button { appearance: none; border: 0; border-radius: 8px; background: #2457d6; color: #fff; font: inherit; font-weight: 600; padding: 9px 16px; cursor: pointer; }
-    .sync-button:hover:not(:disabled) { background: #1c46ae; }
-    .sync-button:disabled { background: #b8c2da; cursor: not-allowed; }
-    .actions .small { margin-top: 0; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 24px; }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
-    .label { color: var(--muted); font-size: 13px; }
-    .number { font-size: 30px; font-weight: 600; margin-top: 2px; }
-    .small { font-size: 13px; color: var(--muted); margin-top: 6px; }
-    table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
-    th { background: #fafbfc; color: var(--muted); font-weight: 500; }
-    tr:last-child td { border-bottom: 0; }
-    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-    .succeeded { color: var(--ok); background: var(--ok-bg); }
-    .failed { color: var(--fail); background: var(--fail-bg); }
-    .running { color: var(--run); background: var(--run-bg); }
-    .error { color: var(--fail); font-size: 13px; margin-top: 4px; }
-    .empty { background: var(--card); border: 1px dashed var(--border); border-radius: 10px; padding: 24px; color: var(--muted); text-align: center; }
-    code { background: #eceef2; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
-    footer { margin-top: 32px; color: var(--muted); font-size: 13px; }
-    a { color: #2457d6; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Syncbridge</h1>
-    <p class="sub">Data pulled from the client API into the local database. This page refreshes every 5 seconds.</p>
+<% end %>
 
-    <div class="actions">
-      <% SyncRun::RESOURCES.each do |resource| %>
-        <% running = @latest_by_resource[resource]&.status == "running" %>
-        <button type="button" class="sync-button" data-resource="<%= resource %>" <%= "disabled" if running %>>
-          <%= running ? "Syncing #{resource}..." : "Sync #{resource} now" %>
-        </button>
-      <% end %>
-      <span id="sync-message" class="small" role="status"></span>
-    </div>
+<h1>Syncbridge</h1>
+<p class="sub">Data pulled from the client API into the local database. This page refreshes every 5 seconds.</p>
 
-    <div class="grid">
-      <div class="card">
-        <div class="label">Attendees stored</div>
-        <div class="number"><%= number_with_delimiter(@attendee_count) %></div>
-      </div>
-      <div class="card">
-        <div class="label">Sessions stored</div>
-        <div class="number"><%= number_with_delimiter(@session_count) %></div>
-      </div>
-      <% @latest_by_resource.each do |resource, run| %>
-        <div class="card">
-          <div class="label">Last <%= resource %> sync</div>
-          <% if run %>
-            <div class="number"><span class="badge <%= run.status %>"><%= run.status %></span></div>
-            <div class="small"><%= time_ago_in_words(run.started_at || run.created_at) %> ago</div>
-          <% else %>
-            <div class="number">Never</div>
-            <div class="small">No sync has run yet</div>
-          <% end %>
-        </div>
+<div class="actions">
+  <% SyncRun::RESOURCES.each do |resource| %>
+    <% running = @latest_by_resource[resource]&.status == "running" %>
+    <button type="button" class="sync-button" data-resource="<%= resource %>" <%= "disabled" if running %>>
+      <%= running ? "Syncing #{resource}..." : "Sync #{resource} now" %>
+    </button>
+  <% end %>
+  <span id="sync-message" class="small" role="status"></span>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">Attendees stored</div>
+    <div class="number"><%= number_with_delimiter(@attendee_count) %></div>
+  </div>
+  <div class="card">
+    <div class="label">Sessions stored</div>
+    <div class="number"><%= number_with_delimiter(@session_count) %></div>
+  </div>
+  <div class="card">
+    <div class="label">Speakers stored</div>
+    <div class="number"><%= number_with_delimiter(@speaker_count) %></div>
+  </div>
+  <% @latest_by_resource.each do |resource, run| %>
+    <div class="card">
+      <div class="label">Last <%= resource %> sync</div>
+      <% if run %>
+        <div class="number"><span class="badge <%= run.status %>"><%= run.status %></span></div>
+        <div class="small"><%= time_ago_in_words(run.started_at || run.created_at) %> ago</div>
+      <% else %>
+        <div class="number">Never</div>
+        <div class="small">No sync has run yet</div>
       <% end %>
     </div>
+  <% end %>
+</div>
 
-    <h2>Recent syncs</h2>
-    <% if @runs.empty? %>
-      <div class="empty">
-        No syncs yet. Start one with <code>bin/rails 'sync:full[attendees]'</code>
-        or <code>curl -X POST localhost:3000/sync_runs -d resource=attendees</code>
-      </div>
-    <% else %>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th><th>Resource</th><th>Status</th><th>Started</th>
-            <th class="num">Duration</th><th class="num">Fetched</th><th class="num">Created</th><th class="num">Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% @runs.each do |run| %>
-            <tr>
-              <td><%= run.id %></td>
-              <td><%= run.resource %></td>
-              <td>
-                <span class="badge <%= run.status %>"><%= run.status %></span>
-                <% if run.error_message.present? %>
-                  <div class="error"><%= truncate(run.error_message, length: 120) %></div>
-                <% end %>
-              </td>
-              <td><%= run.started_at&.strftime("%b %-d, %H:%M:%S") || "-" %></td>
-              <td class="num">
-                <% if run.started_at && run.finished_at %>
-                  <%= number_with_precision(run.finished_at - run.started_at, precision: 1) %>s
-                <% else %>
-                  -
-                <% end %>
-              </td>
-              <td class="num"><%= number_with_delimiter(run.records_fetched) %></td>
-              <td class="num"><%= number_with_delimiter(run.records_created) %></td>
-              <td class="num"><%= number_with_delimiter(run.records_updated) %></td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    <% end %>
+<h2>Recent syncs</h2>
+<% if @runs.empty? %>
+  <div class="empty">
+    No syncs yet. Start one with <code>bin/rails 'sync:full[attendees]'</code>
+    or <code>curl -X POST localhost:3000/sync_runs -d resource=attendees</code>
+  </div>
+<% else %>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Resource</th><th>Status</th><th>Started</th>
+        <th class="num">Duration</th><th class="num">Fetched</th><th class="num">Created</th><th class="num">Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @runs.each do |run| %>
+        <tr>
+          <td><%= link_to run.id, run_path(run) %></td>
+          <td><%= run.resource %></td>
+          <td>
+            <span class="badge <%= run.status %>"><%= run.status %></span>
+            <% if run.error_message.present? %>
+              <div class="error"><%= truncate(run.error_message, length: 120) %></div>
+            <% end %>
+          </td>
+          <td><%= run_time(run.started_at) %></td>
+          <td class="num"><%= run_duration(run) %></td>
+          <td class="num"><%= number_with_delimiter(run.records_fetched) %></td>
+          <td class="num"><%= number_with_delimiter(run.records_created) %></td>
+          <td class="num"><%= number_with_delimiter(run.records_updated) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
 
-    <footer>
-      JSON endpoints: <a href="/sync_runs">/sync_runs</a> &middot; <a href="/attendees">/attendees</a>
-    </footer>
-  </main>
+<footer>
+  JSON endpoints: <a href="/sync_runs">/sync_runs</a> &middot; <a href="/attendees">/attendees</a>
+</footer>
 
-  <script>
-    document.querySelectorAll(".sync-button").forEach(function (button) {
-      button.addEventListener("click", async function () {
-        var message = document.getElementById("sync-message");
-        var resource = button.dataset.resource;
-        document.querySelectorAll(".sync-button").forEach(function (b) { b.disabled = true; });
-        message.textContent = "Starting " + resource + " sync...";
+<script>
+  document.querySelectorAll(".sync-button").forEach(function (button) {
+    button.addEventListener("click", async function () {
+      var message = document.getElementById("sync-message");
+      var resource = button.dataset.resource;
+      document.querySelectorAll(".sync-button").forEach(function (b) { b.disabled = true; });
+      message.textContent = "Starting " + resource + " sync...";
 
-        try {
-          var response = await fetch("/sync_runs", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: "resource=" + encodeURIComponent(resource)
-          });
-          if (!response.ok) throw new Error("HTTP " + response.status);
-          message.textContent = "Sync started. Updating...";
-          setTimeout(function () { window.location.reload(); }, 1000);
-        } catch (error) {
-          message.textContent = "Could not start the sync (" + error.message + ").";
-          document.querySelectorAll(".sync-button").forEach(function (b) { b.disabled = false; });
-        }
-      });
+      try {
+        var response = await fetch("/sync_runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "resource=" + encodeURIComponent(resource)
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        message.textContent = "Sync started. Updating...";
+        setTimeout(function () { window.location.reload(); }, 1000);
+      } catch (error) {
+        message.textContent = "Could not start the sync (" + error.message + ").";
+        document.querySelectorAll(".sync-button").forEach(function (b) { b.disabled = false; });
+      }
     });
-  </script>
-</body>
-</html>
+  });
+</script>

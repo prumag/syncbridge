@@ -43,6 +43,45 @@ class FullSyncTest < ActiveSupport::TestCase
     assert_equal "Hall A", session.room
   end
 
+  test "syncs speakers" do
+    FullSync.new("speakers", client: FakeClient.new([ [ speaker_record(1, title: "CTO") ] ])).call
+
+    speaker = Speaker.find_by!(external_id: "spk_1")
+    assert_equal "CTO", speaker.job_title
+    assert_equal "Acme", speaker.company
+  end
+
+  test "links sessions to their speakers" do
+    FullSync.new("speakers", client: FakeClient.new([ [ speaker_record(1), speaker_record(2), speaker_record(3) ] ])).call
+
+    FullSync.new("sessions", client: FakeClient.new([ [ session_record(1, speaker_ids: %w[spk_1 spk_3]) ] ])).call
+
+    session = EventSession.find_by!(external_id: "ses_1")
+    assert_equal %w[spk_1 spk_3], session.speakers.order(:external_id).pluck(:external_id)
+  end
+
+  test "changing the speakers of a session counts as an update and replaces the links" do
+    FullSync.new("speakers", client: FakeClient.new([ [ speaker_record(1), speaker_record(2) ] ])).call
+    FullSync.new("sessions", client: FakeClient.new([ [ session_record(1, speaker_ids: %w[spk_1]) ] ])).call
+
+    run = FullSync.new("sessions", client: FakeClient.new([ [ session_record(1, speaker_ids: %w[spk_2]) ] ])).call
+
+    assert_equal 1, run.records_updated
+    assert_equal %w[spk_2], EventSession.find_by!(external_id: "ses_1").speakers.pluck(:external_id)
+    assert_equal 1, SessionSpeaker.count
+  end
+
+  test "re-syncing unchanged sessions reports no updates" do
+    FullSync.new("speakers", client: FakeClient.new([ [ speaker_record(1) ] ])).call
+    pages = [ [ session_record(1, speaker_ids: %w[spk_1]) ] ]
+    FullSync.new("sessions", client: FakeClient.new(pages)).call
+
+    run = FullSync.new("sessions", client: FakeClient.new(pages)).call
+
+    assert_equal 0, run.records_updated
+    assert_equal 1, SessionSpeaker.count
+  end
+
   test "marks the run failed and re-raises when the client errors" do
     client = Object.new
     def client.fetch_page(*, **) = raise(ClientApi::Error, "boom")

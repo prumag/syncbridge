@@ -1,17 +1,17 @@
 # Syncbridge
 
-A Rails API app that pulls event data (attendees and sessions) from a client's REST API into a local database. It is a small version of the kind of integration backend used to feed a mobile event app.
+A Rails API app that pulls event data (attendees, sessions and speakers) from a client's REST API into a local database. It is a small version of the kind of integration backend used to feed a mobile event app.
 
 ## Components
 
 | Part | Location | Purpose |
 | --- | --- | --- |
 | API client | `app/services/client_api/` | HTTP wrapper around the client's API (auth, pagination, error on non-2xx) |
-| Full sync | `app/services/full_sync.rb` | Fetches every page of a resource and upserts records by `external_id` |
+| Full sync | `app/services/full_sync.rb` | Fetches every page of a resource and upserts records by `external_id`. Sessions are linked to their speakers (`session_speakers`) |
 | Job | `app/jobs/full_sync_job.rb` | Runs a sync in the background (Solid Queue) |
 | Sync history | `SyncRun` model, `GET /sync_runs` | One row per sync with status and record counts |
 | Endpoints | `app/controllers/` | `POST /sync_runs`, `GET /sync_runs`, `GET /attendees` |
-| Status page | `app/controllers/status_controller.rb` | `GET /` shows record counts, sync history and "Sync now" buttons |
+| Status page | `app/controllers/status_controller.rb` | `GET /` shows record counts, sync history and "Sync now" buttons; `GET /runs/:id` shows one sync run in detail |
 | Mock client API | `mock_api/` | Standalone Rack app that imitates the client's system |
 
 ## Setup
@@ -34,7 +34,7 @@ bin/mock_api            # http://localhost:4567
 Run a sync in another:
 
 ```bash
-bin/rails 'sync:full[attendees]'     # or 'sync:full[sessions]', or 'sync:full' for both
+bin/rails 'sync:full[attendees]'     # or 'sync:full[sessions]', 'sync:full[speakers]', or 'sync:full' for all three
 ```
 
 Or through the app:
@@ -51,13 +51,17 @@ Configuration (environment variables): `CLIENT_API_URL` (default `http://localho
 
 ## Mock client API
 
-Seeded with 1200 attendees and 60 sessions. Each record carries an `updated_at` timestamp. List endpoints accept `page`, `per_page` (max 200) and `updated_since` (ISO 8601).
+Seeded with 1200 attendees, 60 sessions and 25 speakers. Each record carries an `updated_at` timestamp. Each session lists its speakers in `speaker_ids`. List endpoints (`/api/v1/attendees`, `/api/v1/sessions`, `/api/v1/speakers`) accept `page`, `per_page` (max 200) and `updated_since` (ISO 8601).
+
+Deleted records simply stop appearing in the list endpoints. The client never reports a deletion any other way. Deleting a speaker also removes it from the `speaker_ids` of its sessions, which counts as a change to those sessions.
 
 Admin endpoints for testing:
 
 ```bash
 curl -XPOST localhost:4567/admin/mode   -d '{"mode":"rate_limited"}'   # normal | flaky | rate_limited | slow
 curl -XPOST localhost:4567/admin/mutate -d '{"updates":10,"creates":5}' # change/add attendees
+curl -XPOST localhost:4567/admin/mutate -d '{"resource":"sessions","updates":5,"creates":2}'   # or "speakers"
+curl -XPOST localhost:4567/admin/delete -d '{"attendees":5,"sessions":2,"speakers":1}'         # remove random records
 curl -XPOST localhost:4567/admin/reset                                  # restore seed data
 curl localhost:4567/admin/state
 ```

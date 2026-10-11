@@ -24,6 +24,17 @@ class FullSync
           external_updated_at: r["updated_at"]
         }
       }
+    },
+    "speakers" => {
+      model: Speaker,
+      attributes: ->(r) {
+        {
+          name: r["name"],
+          company: r["company"],
+          job_title: r["title"],
+          external_updated_at: r["updated_at"]
+        }
+      }
     }
   }.freeze
 
@@ -66,13 +77,24 @@ class FullSync
 
     row.assign_attributes(@mapper[:attributes].call(record))
     row.save!
+    links_changed = link_speakers(row, record) if @resource == "sessions"
 
     run.records_fetched += 1
     if was_new
       run.records_created += 1
-    elsif row.saved_changes.except("updated_at").any?
+    elsif row.saved_changes.except("updated_at").any? || links_changed
       run.records_updated += 1
     end
     run.save!
+  end
+
+  # Points a session at the speakers the client lists for it (matched by external id).
+  # Returns true if the set of linked speakers changed.
+  def link_speakers(session, record)
+    wanted = Speaker.where(external_id: record.fetch("speaker_ids", [])).pluck(:id).sort
+    return false if wanted == session.speaker_ids.sort
+
+    session.speaker_ids = wanted
+    true
   end
 end

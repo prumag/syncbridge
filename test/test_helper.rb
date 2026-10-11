@@ -27,5 +27,17 @@ module ActiveSupport
     def attendee_record(id, name: "Person #{id}", company: "Acme", updated_at: "2026-09-01T08:00:00Z")
       { "id" => "att_#{id}", "name" => name, "email" => "p#{id}@example.com", "company" => company, "updated_at" => updated_at }
     end
+
+    def speaker_record(id, name: "Speaker #{id}", company: "Acme", title: "Engineer", updated_at: "2026-09-01T08:00:00Z")
+      { "id" => "spk_#{id}", "name" => name, "company" => company, "title" => title, "updated_at" => updated_at }
+    end
+
+    def session_record(id, title: "Session #{id}", room: "Hall A", speaker_ids: [], updated_at: "2026-09-01T08:00:00Z")
+      {
+        "id" => "ses_#{id}", "title" => title, "room" => room,
+        "starts_at" => "2026-09-02T09:00:00Z", "ends_at" => "2026-09-02T09:50:00Z",
+        "speaker_ids" => speaker_ids, "updated_at" => updated_at
+      }
+    end
   end
 end
