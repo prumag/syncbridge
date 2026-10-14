@@ -45,7 +45,16 @@ curl -X POST localhost:3000/sync_runs -d resource=attendees
 curl localhost:3000/sync_runs
 ```
 
-Background jobs are processed by Solid Queue (`bin/jobs`).
+Background jobs are processed by Solid Queue (`bin/jobs`). In development, including inside Docker, button clicks run in the Rails process.
+
+To run the same setup in Docker:
+
+```bash
+docker build -t syncbridge .
+docker run --rm -p 3000:3000 -p 4567:4567 syncbridge
+```
+
+The status page is at http://localhost:3000 and the mock client API is at http://localhost:4567.
 
 Configuration (environment variables): `CLIENT_API_URL` (default `http://localhost:4567`), `CLIENT_API_TOKEN` (default `test-token`).
 

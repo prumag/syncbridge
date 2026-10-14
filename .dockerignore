@@ -1,0 +1,7 @@
+.git
+.gitignore
+log/*
+tmp/*
+storage/*
+NOTES.md
+.DS_Store

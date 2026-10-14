@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Starts the mock client API, prepares the local database, then starts Rails.
+set -euo pipefail
+
+cd /app
+mkdir -p storage tmp/pids log
+
+bundle exec rails db:prepare
+bundle exec puma mock_api/config.ru -b tcp://0.0.0.0:4567 -t 4:4 &
+exec bundle exec rails server -b 0.0.0.0 -p 3000
